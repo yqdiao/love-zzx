@@ -235,14 +235,15 @@
     controls.target.set(0, 0.35, 0);
     controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-    /* ─── lights ─────────────────────────────────────────────────── */
-    scene.add(new THREE.AmbientLight(0xf8dbe7, 0.42));
-    const keyL = new THREE.DirectionalLight(0xfff8fb, 1.25); keyL.position.set(3.8, 5.4, 5.2); scene.add(keyL);
-    const rimL = new THREE.PointLight(0xff4f93, 1.8, 32); rimL.position.set(-2.4, 1.4, 3.8); scene.add(rimL);
-    const fillL = new THREE.PointLight(0xbdd8ff, 0.72, 24); fillL.position.set(2.8, -0.3, 3.2); scene.add(fillL);
-    const backL = new THREE.PointLight(0x8b5cf6, 0.9, 28); backL.position.set(0.4, 0.3, -7.5); scene.add(backL);
-    const topL  = new THREE.DirectionalLight(0xffd4e4, 0.8); topL.position.set(0, 8, 1.5); scene.add(topL);
-    const crystalL = new THREE.PointLight(0x8fe9ff, 0.55, 18); crystalL.position.set(-0.6, 2.4, 5.6); scene.add(crystalL);
+    /* ─── lights（水晶感：暖环境 + 玫红边光 + 顶面键光 + 左后紫色轮廓） ─── */
+    scene.add(new THREE.AmbientLight(0xffe8f0, 0.6));
+    const keyL = new THREE.DirectionalLight(0xfff8fb, 1.05); keyL.position.set(3.8, 5.4, 5.2); scene.add(keyL);
+    const rimL = new THREE.PointLight(0xff1744, 3.5, 20); rimL.position.set(-2.4, 1.4, 3.8); scene.add(rimL);
+    const fillL = new THREE.PointLight(0xc8ddf5, 0.55, 24); fillL.position.set(2.8, -0.3, 3.2); scene.add(fillL);
+    const backL = new THREE.PointLight(0x8b5cf6, 0.75, 28); backL.position.set(0.4, 0.3, -7.5); scene.add(backL);
+    const topL = new THREE.DirectionalLight(0xfff8f0, 1.6); topL.position.set(0, 12, 2); scene.add(topL);
+    const leftBackRimL = new THREE.PointLight(0x6a1de8, 2.2, 24); leftBackRimL.position.set(-5.2, 4.2, -4.5); scene.add(leftBackRimL);
+    const crystalL = new THREE.PointLight(0x8fe9ff, 0.45, 18); crystalL.position.set(-0.6, 2.4, 5.6); scene.add(crystalL);
 
     /* ─── colors ─────────────────────────────────────────────────── */
     const cRoseDeep   = new THREE.Color('#9c1448');
@@ -255,30 +256,36 @@
     const cBlush      = new THREE.Color('#f5c6d0');
 
     /* ══════════════════════════════════════════════════════════════
-       ❶  TRUE 3-D HEART SOLID MESH
-          Parametric surface: u=longitude, v=latitude (pole-to-pole)
-          v=0 → front face, v=1 → back face
+       ❶  经典心形截面 × Z 向 Loft（椭圆厚度）
+          u：截面参数 t=2πu；v=0 前尖(+Z)，v=1 后背圆润收拢(-Z)
        ══════════════════════════════════════════════════════════════ */
-    /** 闭合参数曲面：u∈[0,1] 绕心形纬圈一周，v∈[0,1] 从前尖到后尖；任意视角为实体封闭网格 */
-    function heartCurve2D(t) {
+    function heartClassicXY(t) {
       const hx = 16 * Math.pow(Math.sin(t), 3);
       const hy = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
-      const yNorm = THREE.MathUtils.clamp((hy + 17) / 22, 0, 1);
-      const x = hx * (0.056 + 0.005 * yNorm) * HS;
-      const y = (hy * 0.055 + 0.15 + yNorm * 0.08) * HS;
-      return new THREE.Vector2(x, y);
+      return { hx, hy };
     }
 
     function heartSolidXYZ(u, v) {
       const t = u * Math.PI * 2;
-      const outline = heartCurve2D(t);
-      const depth = v * 2 - 1;
-      const cross = Math.pow(Math.max(0, 1 - depth * depth), 0.48);
-      const poleY = 0.16 * HS;
-      const x = outline.x * cross;
-      const y = THREE.MathUtils.lerp(poleY, outline.y, cross);
-      const z = depth * (0.64 + 0.18 * cross) * HS;
-      return new THREE.Vector3(x, y, z);
+      const { hx, hy } = heartClassicXY(t);
+      const k = 0.036 * HS;
+
+      const tipOpen = THREE.MathUtils.smoothstep(v / 0.082, 0, 1);
+      const along = Math.sin(v * Math.PI);
+      const rearRound = 0.36 + 0.64 * Math.sqrt(Math.max(0, 1 - v));
+      const section = tipOpen * (0.16 + 0.84 * along * (0.58 + 0.42 * rearRound));
+
+      const x = hx * k * section;
+      const y = (hy + 2.35) * k * section + 0.09 * HS * (0.25 + 0.75 * tipOpen);
+
+      const ecc = 0.48 + 0.52 * Math.pow(Math.abs(Math.sin(t)), 1.18);
+      const depth = 0.48 * HS;
+      const zBase = (0.52 - v) * 2 * depth;
+      const ellBlend = THREE.MathUtils.clamp(tipOpen * along, 0, 1);
+      const z = zBase * THREE.MathUtils.lerp(1, ecc, ellBlend);
+
+      const sweep = 0.035 * HS * along * section * Math.sin(2 * t);
+      return new THREE.Vector3(x + sweep * Math.cos(v * Math.PI), y, z);
     }
 
     function buildHeartMeshGeo(uSeg, vSeg) {
@@ -322,34 +329,34 @@
     scene.add(heartBeatGroup);
 
     // Outer shell — deep-red glass
-    const outerGeo = buildHeartMeshGeo(160, 80);
+    const outerGeo = buildHeartMeshGeo(200, 100);
     const outerMat = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color('#c41256'),
-      emissive: new THREE.Color(0.22, 0.02, 0.09),
-      emissiveIntensity: 0.92,
-      roughness: 0.08,
-      metalness: 0.02,
-      transmission: 0.32,
-      ior: 1.18,
-      thickness: 1.4,
+      color: new THREE.Color('#c2185b'),
+      emissive: new THREE.Color(0.1, 0.015, 0.04),
+      emissiveIntensity: 0.35,
+      roughness: 0.04,
+      metalness: 0,
+      transmission: 0.65,
+      ior: 1.45,
+      thickness: 2.2,
       clearcoat: 1,
-      clearcoatRoughness: 0.06,
+      clearcoatRoughness: 0.02,
       transparent: true,
-      opacity: 0.78,
+      opacity: 0.92,
       side: THREE.FrontSide,
     });
     const outerMesh = new THREE.Mesh(outerGeo, outerMat);
     heartBeatGroup.add(outerMesh);
 
     // Inner bright core mesh
-    const innerGeo = buildHeartMeshGeo(100, 52);
+    const innerGeo = buildHeartMeshGeo(128, 64);
     const innerMat = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color('#ffb7d2'),
-      emissive: new THREE.Color(0.78, 0.18, 0.32),
-      emissiveIntensity: 1.2,
+      emissive: new THREE.Color('#ff4081'),
+      emissiveIntensity: 1.8,
       roughness: 0.1,
       metalness: 0,
-      transmission: 0.54,
+      transmission: 0.7,
       ior: 1.1,
       thickness: 1.1,
       clearcoat: 1,
@@ -359,7 +366,7 @@
       side: THREE.FrontSide,
     });
     const innerMesh = new THREE.Mesh(innerGeo, innerMat);
-    innerMesh.scale.set(0.7, 0.73, 0.62);
+    innerMesh.scale.set(0.62, 0.65, 0.55);
     heartBeatGroup.add(innerMesh);
 
     // Wireframe overlay
@@ -385,9 +392,9 @@
       clearcoat: 1,
       clearcoatRoughness: 0.03,
       transparent: true,
-      opacity: 0.14,
+      opacity: 0.22,
       side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       depthWrite: false
     });
     const crystalShell = new THREE.Mesh(outerGeo.clone(), crystalShellMat);
@@ -457,9 +464,12 @@
     }
 
     function heartOutlinePoint() {
-      const t=Math.random()*Math.PI*2;
-      const p = heartCurve2D(t);
-      return new THREE.Vector3(p.x * 0.55, p.y * 0.58, (Math.random() - .5) * 0.28 * HS);
+      const t = Math.random() * Math.PI * 2;
+      const { hx, hy } = heartClassicXY(t);
+      const k = 0.036 * HS;
+      const x = hx * k * 0.55;
+      const y = (hy + 2.35) * k * 0.55 + 0.09 * HS;
+      return new THREE.Vector3(x, y, (Math.random() - 0.5) * 0.28 * HS);
     }
 
     const audioState = {
@@ -1085,7 +1095,7 @@
       const pulse=heartbeatScale(t);
       const glow =heartbeatGlow(t);
       heartBeatGroup.scale.setScalar(pulse);
-      rimL.intensity=1.75+glow*1.25;
+      rimL.intensity=3.5+glow*1.1;
       crystalL.intensity=0.5+glow*0.45;
       orbMat.emissiveIntensity=0.42+glow*0.52;
       haloMat.opacity=0.22+glow*0.24;
@@ -1097,15 +1107,19 @@
         rimGlowMat.opacity = 0.3;
         auraMat.opacity = 0.16;
       } else {
-        outerMat.emissive.setRGB(0.22 + Math.sin(t * 1.4) * 0.08, 0.02, 0.09 + Math.sin(t * 1.6) * 0.035);
+        outerMat.emissive.setRGB(
+          0.08 + Math.sin(t * 1.2) * 0.03,
+          0.012,
+          0.032 + Math.sin(t * 1.4) * 0.015
+        );
         rimGlowMat.opacity = 0.14 + Math.sin(t * 1.6) * 0.045;
         auraMat.opacity = 0.065 + glow * 0.05 + Math.sin(t * 1.1) * 0.012;
       }
 
-      outerMat.clearcoat = 0.92 + glow * 0.08;
-      outerMat.transmission = 0.28 + glow * 0.08;
-      crystalShellMat.opacity = 0.11 + glow * 0.06;
-      innerMat.emissiveIntensity = 1.05 + glow * 0.5;
+      outerMat.clearcoat = 1;
+      outerMat.transmission = 0.65 + glow * 0.05;
+      crystalShellMat.opacity = 0.22 + glow * 0.08;
+      innerMat.emissiveIntensity = 1.8 + glow * 0.48;
       wireMat.opacity = 0.012 + glow * 0.012;
       backL.intensity = 0.82 + Math.sin(t * 0.8) * 0.06;
       fillL.intensity = 0.68 + glow * 0.2;
